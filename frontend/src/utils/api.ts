@@ -1,6 +1,13 @@
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+// 使用相对路径或环境变量
+// 在 Railway 上：Nginx 会通过相对路径 /api/v1 代理到后端
+// 在本地开发：使用 VITE_API_URL 环境变量或默认 localhost:8000
+const API_BASE_URL = import.meta.env.VITE_API_URL || (
+  typeof window !== 'undefined' && window.location.hostname === 'localhost'
+    ? 'http://localhost:8000/api/v1'
+    : '/api/v1'
+)
 
 const api = axios.create({
   baseURL: API_BASE_URL,

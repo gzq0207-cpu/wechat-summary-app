@@ -69,15 +69,16 @@ COPY backend/.env.example .env
 COPY nginx.conf /etc/nginx/nginx.conf
 
 # 创建启动脚本
-RUN mkdir -p /app/scripts
-RUN echo '#!/bin/bash\n\
-# 启动 Nginx（提供前端）\n\
-nginx -g "daemon off;" &\n\
-NGINX_PID=$!\n\
-\n\
-# 启动 FastAPI 后端\n\
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000\n\
-' > /app/scripts/start.sh && chmod +x /app/scripts/start.sh
+RUN mkdir -p /app/scripts && cat > /app/scripts/start.sh << 'EOF'
+#!/bin/bash
+# 启动 Nginx（提供前端）
+nginx -g "daemon off;" &
+NGINX_PID=$!
+
+# 启动 FastAPI 后端
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+EOF
+RUN chmod +x /app/scripts/start.sh
 
 # 暴露端口
 EXPOSE 80 8000

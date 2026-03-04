@@ -20,27 +20,57 @@
    - 选择 "Deploy from GitHub repo"
    - 选择 `wechat-summary-app` 仓库
 
-3. **配置服务**
-   - Railway会自动检测 `railway.toml` 配置
-   - 自动创建 PostgreSQL 数据库服务
-   - 自动构建并部署 Docker 镜像
+3. **添加PostgreSQL数据库服务**
+   
+   ⚠️ **重要**: Railway不会自动创建PostgreSQL，需要手动添加：
+   
+   - 在Railway Dashboard中选择项目
+   - 点击 "+ New Service" → 选择 "Database" → 选择 "PostgreSQL"
+   - 等待PostgreSQL服务创建完成（1-2分钟）
+   - Railway会自动注入 `DATABASE_URL` 环境变量
 
-4. **设置环境变量**
-   在 Railway Dashboard 的 "Variables" 中配置:
+4. **配置后端服务连接**
+   
+   连接后端服务到PostgreSQL：
+   - 在Railway Dashboard中，找到你的后端服务
+   - 点击 "Variable" 选项卡
+   - 确认 `DATABASE_URL` 变量已自动设置（格式: `postgresql://user:password@hostname:5432/db_name`）
+   - 如果没有，手动从PostgreSQL服务配置中复制 `DATABASE_URL`
+
+5. **设置应用环境变量**
+   
+   在后端服务的 "Variable" 中配置以下额外变量:
    ```
    FASTAPI_ENV=production
-   SECRET_KEY=your-random-secret-key-here
+   SECRET_KEY=your-random-secret-key-change-this
    LLM_PROVIDER=baidu
    BAIDU_API_KEY=your-baidu-api-key
    BAIDU_SECRET_KEY=your-baidu-secret-key
    SCHEDULE_TIMEZONE=Asia/Shanghai
+   CRAWL_SCHEDULE_HOUR=9
+   CRAWL_SCHEDULE_MINUTE=0
    ```
    
-   Railway 会自动生成: `DATABASE_URL`
+   | 变量名 | 获取方式 |
+   |------|--------|
+   | `BAIDU_API_KEY` | 从百度云控制台获取 |
+   | `BAIDU_SECRET_KEY` | 从百度云控制台获取 |
+   | `SECRET_KEY` | 生成随机字符串: `openssl rand -hex 32` |
 
-5. **部署**
-   - 推送代码到GitHub即自动部署
-   - 查看日志: Railway Dashboard → Logs
+6. **部署应用**
+   
+   - 将修改推送到GitHub: `git push origin main`
+   - Railway会自动检测到更新并重新构建部署
+   - 查看部署日志: Railway Dashboard → "Deployments" 标签
+   - 等待部署完成（通常5-10分钟）
+
+7. **验证部署**
+   
+   部署完成后：
+   - Railway会生成一个公网URL（如: `https://xxx.railway.app`）
+   - 打开该URL验证应用是否成功启动
+   - 访问API文档: `https://xxx.railway.app/api/v1/docs`
+   - 查看应用日志确认数据库连接成功: Railway Dashboard → "Logs"
 
 ## 阿里云 ECS 部署
 
@@ -153,24 +183,68 @@ docker-compose down
 docker-compose up -d --build
 ```
 
-### 常见问题
+## 常见问题
 
-**1. 数据库连接失败**
-- 检查 DATABASE_URL 格式
-- 确保数据库服务已启动: `docker-compose ps`
-- 查看数据库日志: `docker-compose logs postgres`
+**1. Railway部署失败: "connection refused on localhost:5432"**
+   
+   原因: PostgreSQL数据库服务未添加或未连接
+   
+   解决方案:
+   ```
+   1. 检查PostgreSQL是否已在Railway中创建:
+      - 查看Railway项目的所有services
+      - 应该看到 "PostgreSQL" 服务
+      
+   2. 如果没有PostgreSQL服务:
+      - 点击 "+ New Service"
+      - 选择 "Database" → "PostgreSQL"
+      - 等待创建完成
+      
+   3. 确认DATABASE_URL已设置:
+      - 点击后端服务 → "Variables"
+      - 应该看到 DATABASE_URL 变量
+      - 格式应为: postgresql://user:pass@hostname:port/dbname
+      
+   4. 重新部署后端:
+      - Railway Dashboard → 后端服务 → "Deploy"
+      - 或推送代码到GitHub触发自动部署
+   ```
 
-**2. LLM API 调用失败**
-- 检查 API 密钥是否正确
-- 确保账户有充足的额度
+**2. Railway部署失败: "TOML parsing error"**
+   
+   原因: `railway.toml` 文件格式不正确
+   
+   解决方案:
+   ```bash
+   # 确保railway.toml使用正确的TOML格式（非YAML）:
+   [build]
+   dockerfile = "Dockerfile"
+   context = "."
+
+   [deploy]
+   startCommand = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+   [env]
+   FASTAPI_ENV = "production"
+   ```
+
+**3. 数据库连接失败**
+- 检查 DATABASE_URL 格式是否正确
+- 确保 PostgreSQL 服务已启动并可达
+- 查看Railway日志获取详细错误: Railway Dashboard → Logs
+- 检查数据库用户名和密码是否正确
+
+**4. LLM API 调用失败**
+- 检查 BAIDU_API_KEY 和 BAIDU_SECRET_KEY 是否正确
+- 确保账户有充足的API调用额度
 - 查看后端日志获取详细错误信息
 
-**3. Playwright 浏览器超时**
-- 增加 BROWSER_TIMEOUT_SECONDS
+**5. Playwright 浏览器超时**
+- 增加 BROWSER_TIMEOUT_SECONDS 变量值
 - 检查网络连接
-- 减少爬取频率
+- 减少爬取频率或增加 CRAWL_DELAY_SECONDS
 
-**4. 前后端通信失败**
+**6. 前后端通信失败**
 - 检查CORS配置
 - 确保前端API_URL指向正确的后端地址
 - 查看浏览器开发工具中的网络请求

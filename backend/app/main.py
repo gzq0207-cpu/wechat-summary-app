@@ -20,9 +20,19 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# 创建数据库表
-Base.metadata.create_all(bind=engine)
-logger.info("数据库表已创建")
+# 创建数据库表 - 可容错
+def init_db():
+    """初始化数据库表，失败时记录错误但不中断启动"""
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("数据库表已创建")
+    except Exception as e:
+        logger.error(f"数据库初始化失败: {e}")
+        logger.error("请确保 DATABASE_URL 环境变量已设置且数据库可访问")
+        # 在生产environment中，表创建失败不应该阻止应用启动
+        # 如有需要可改为 raise
+
+init_db()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

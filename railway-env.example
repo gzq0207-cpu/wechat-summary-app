@@ -1,0 +1,48 @@
+# Railway 环境变量配置模板
+# 复制这些变量到 Railway Dashboard → 后端服务 → Variables
+
+# 应用配置
+FASTAPI_ENV=production
+SECRET_KEY=change-me-to-random-32-chars-string
+DEBUG=false
+
+# LLM 配置 (百度文心千帆)
+LLM_PROVIDER=baidu
+BAIDU_API_KEY=your-baidu-api-key-here
+BAIDU_SECRET_KEY=your-baidu-secret-key-here
+
+# 爬虫配置
+CRAWL_SCHEDULE_HOUR=9
+CRAWL_SCHEDULE_MINUTE=0
+SCHEDULE_TIMEZONE=Asia/Shanghai
+CRAWL_DELAY_SECONDS=2
+HEADLESS_BROWSER=true
+BROWSER_TIMEOUT_SECONDS=30
+
+# 以下变量由 Railway 自动生成，不需要手动设置:
+# DATABASE_URL=postgresql://user:pass@hostname:port/dbname
+# RAILWAY_ENVIRONMENT_NAME=production
+# PORT=8000
+
+# ===== 说明 ======
+# 
+# BAIDU_API_KEY 和 BAIDU_SECRET_KEY 获取方式:
+# 1. 访问: https://console.bce.baidu.com/
+# 2. 登录或注册账户
+# 3. 进入 "应用管理" → "创建应用"
+# 4. 选择 "文心千帆" API
+# 5. 复制 API Key 和 Secret Key
+#
+# SECRET_KEY 生成方式 (在 bash/PowerShell 中):
+# - Linux/Mac: openssl rand -hex 32
+# - PowerShell: [guid]::NewGuid().ToString() + [guid]::NewGuid().ToString()
+#
+# ===== 配置步骤 ======
+#
+# 1. 打开: https://railway.app/dashboard
+# 2. 选择项目: wechat-summary-app
+# 3. 点击后端服务: wechat-summary-app
+# 4. 点击 "Variables" 选项卡
+# 5. 点击 "+ New Variable"
+# 6. 逐个添加上面的环境变量
+# 7. 部署时 Railway 会自动注入 DATABASE_URL

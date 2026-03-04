@@ -6,10 +6,10 @@ FROM node:18-alpine as frontend-builder
 WORKDIR /app/frontend
 
 # 复制前端依赖
-COPY frontend/package.json frontend/package-lock.json* ./
+COPY frontend/package.json ./
 
 # 安装依赖
-RUN npm ci
+RUN npm install
 
 # 复制前端源代码
 COPY frontend/src ./src

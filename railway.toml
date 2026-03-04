@@ -1,0 +1,32 @@
+name: wechat-summary-app
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      FASTAPI_ENV: production
+      SECRET_KEY: ${SECRET_KEY}
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      BAIDU_API_KEY: ${BAIDU_API_KEY}
+      BAIDU_SECRET_KEY: ${BAIDU_SECRET_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      WECHAT_LOGIN_USERNAME: ${WECHAT_LOGIN_USERNAME}
+      WECHAT_LOGIN_PASSWORD: ${WECHAT_LOGIN_PASSWORD}
+      SCHEDULE_TIMEZONE: Asia/Shanghai
+      CRAWL_SCHEDULE_HOUR: 9
+      CRAWL_SCHEDULE_MINUTE: 0
+    expose:
+      - 8000
+  
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    expose:
+      - 80
+    depends_on:
+      - backend
+
+  # Railway会自动处理代理和SSL

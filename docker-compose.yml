@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:16-alpine
+    container_name: wechat_summary_db
+    environment:
+      POSTGRES_USER: wechat_user
+      POSTGRES_PASSWORD: wechat_password
+      POSTGRES_DB: wechat_summary
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wechat_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 后端服务
+  backend:
+    build: .
+    container_name: wechat_summary_backend
+    environment:
+      DATABASE_URL: postgresql://wechat_user:wechat_password@postgres:5432/wechat_summary
+      FASTAPI_ENV: production
+      LLM_PROVIDER: baidu
+      BAIDU_API_KEY: ${BAIDU_API_KEY}
+      BAIDU_SECRET_KEY: ${BAIDU_SECRET_KEY}
+      SCHEDULE_TIMEZONE: Asia/Shanghai
+      CRAWL_SCHEDULE_HOUR: 9
+      CRAWL_SCHEDULE_MINUTE: 0
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # 前端服务（开发）
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    container_name: wechat_summary_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+    environment:
+      VITE_API_URL: http://localhost:8000/api/v1
+    command: npm run dev
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: wechat_summary_network

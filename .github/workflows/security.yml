@@ -1,0 +1,42 @@
+name: Security Scan
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    - cron: '0 0 * * 0'  # 每周日运行
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      - name: Run Bandit on Python code
+        run: |
+          pip install bandit
+          bandit -r backend/app -f json -o bandit-results.json || true
+        continue-on-error: true
+      
+      - name: Run npm audit on frontend
+        run: |
+          cd frontend
+          npm audit --audit-level=moderate || true
+        continue-on-error: true

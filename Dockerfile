@@ -13,7 +13,6 @@ RUN npm ci
 
 # 复制前端源代码
 COPY frontend/src ./src
-COPY frontend/public ./public
 COPY frontend/*.config.js ./
 COPY frontend/tsconfig*.json ./
 COPY frontend/index.html ./

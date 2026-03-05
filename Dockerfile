@@ -104,20 +104,22 @@ if result.returncode != 0:
     sys.exit(1)
 print("[OK] Nginx configuration is valid")
 
-# Step 2: Start Nginx in background
+# Step 2: Start Nginx in background (WITHOUT daemon off - that would block)
 print("[2/3] Starting Nginx on port 80...")
+# Use daemon on (default) so Nginx backgrounds itself immediately
 nginx_proc = subprocess.Popen(
-    ["nginx", "-g", "daemon off;"],
+    ["nginx"],  # No "daemon off" - let nginx background itself
     stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE
+    stderr=subprocess.PIPE,
+    preexec_fn=lambda: None  # Ensure it runs independently
 )
 time.sleep(2)
 
 if nginx_proc.poll() is not None:
     stdout, stderr = nginx_proc.communicate()
     print("[ERROR] Nginx failed to start!")
-    print("STDOUT:", stdout.decode())
-    print("STDERR:", stderr.decode())
+    print("STDOUT:", stdout.decode() if stdout else "")
+    print("STDERR:", stderr.decode() if stderr else "")
     sys.exit(1)
 
 print(f"[OK] Nginx running (PID: {nginx_proc.pid})")

@@ -21,12 +21,12 @@ COPY frontend/index.html ./
 # 构建前端
 RUN npm run build
 
-# 阶段 2: 构建后端 + 安装 Playwright 浏览器
+# 阶段 2: 构建后端
 FROM python:3.11-slim as backend-builder
 
 WORKDIR /app
 
-# 安装系统依赖（含 Playwright 所需构建工具）
+# 安装系统依赖
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
@@ -36,40 +36,26 @@ RUN apt-get update && apt-get install -y \
 COPY backend/requirements.txt .
 
 # 安装 Python 依赖
+# 注意：playwright Python 包会安装，但浏览器二进制不在此处安装
+# Railway 免费套餐内存（512MB）不足以运行 Chromium（~250MB），爬虫功能需在本地或独立服务器运行
 RUN pip install --no-cache-dir -r requirements.txt
-
-# 安装 Playwright 浏览器及其系统依赖（--with-deps 自动处理 OS 级依赖）
-RUN playwright install --with-deps chromium
 
 # 阶段 3: 最终运行阶段（FastAPI 同时提供 API 和前端静态文件）
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装运行时依赖（Chromium 所需的 .so 库 + 数据库客户端 + curl）
+# 安装运行时依赖（数据库客户端 + curl）
 RUN apt-get update && apt-get install -y \
     postgresql-client \
     libpq5 \
     curl \
-    libnss3 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libgtk-3-0 \
-    libgbm1 \
-    libasound2 \
-    libxss1 \
-    libxtst6 \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制 Python 运行时环境
 COPY --from=backend-builder /usr/lib /usr/lib
 COPY --from=backend-builder /usr/local/lib/python3.11 /usr/local/lib/python3.11
 COPY --from=backend-builder /usr/local/bin /usr/local/bin
-
-# 复制 Playwright Chromium 浏览器二进制（修复爬虫功能）
-COPY --from=backend-builder /root/.cache/ms-playwright /root/.cache/ms-playwright
 
 # 复制前端构建结果到 /app/static（由 FastAPI StaticFiles 提供服务）
 COPY --from=frontend-builder /app/frontend/dist/ /app/static/

@@ -46,12 +46,18 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装 Nginx
+# 安装 Nginx 和必要工具
 RUN apt-get update && apt-get install -y \
     nginx \
     postgresql-client \
     libpq5 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# 创建 nginx 日志目录和其他必要目录
+RUN mkdir -p /var/log/nginx /var/run/nginx /var/cache/nginx /var/www/html \
+    && chown -R www-data:www-data /var/log/nginx /var/run /var/cache/nginx /var/www/html \
+    && chmod -R 755 /var/www/html
 
 # 复制 Python 运行时环境
 COPY --from=backend-builder /usr/lib /usr/lib
@@ -60,7 +66,10 @@ COPY --from=backend-builder /usr/local/bin /usr/local/bin
 
 # 复制前端构建结果到 Nginx
 RUN mkdir -p /var/www/html
-COPY --from=frontend-builder /app/frontend/dist /var/www/html
+COPY --from=frontend-builder /app/frontend/dist/ /var/www/html/
+
+# 验证前端文件是否存在
+RUN ls -la /var/www/html/ || echo "WARNING: Frontend dist is empty"
 
 # 复制后端应用代码
 COPY backend/app ./app
@@ -93,9 +102,48 @@ RUN chmod +x /app/scripts/start.sh
 # 仅暴露 80 端口（Nginx 处理所有流量）
 EXPOSE 80
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:80/ || exit 1
+# 健康检查 - 检查 Nginx 是否在 80 端口响应
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD curl -f http://127.0.0.1:80/api/v1/ >/dev/null 2>&1 || exit 1
 
-# 启动脚本
-CMD ["/bin/sh", "-c", "nginx -g 'daemon off;' & sleep 1 && exec uvicorn app.main:app --host 127.0.0.1 --port 8000"]
+# 创建启动脚本
+RUN mkdir -p /app/scripts && cat > /app/scripts/start.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "[$(date)] Starting services..."
+
+# 测试 Nginx 配置
+echo "[$(date)] Testing Nginx configuration..."
+if ! nginx -t 2>&1; then
+    echo "[ERROR] Nginx configuration test failed. Exiting."
+    exit 1
+fi
+
+# 启动 Nginx
+echo "[$(date)] Starting Nginx on port 80..."
+/usr/sbin/nginx -g "daemon off;" &
+NGINX_PID=$!
+echo "[$(date)] Nginx started (PID: $NGINX_PID)"
+
+# 等待 Nginx 启动
+sleep 2
+
+# 检查 Nginx 是否在运行
+if ! ps -p $NGINX_PID > /dev/null 2>&1; then
+    echo "[ERROR] Nginx process died. Checking logs..."
+    cat /var/log/nginx/error.log || true
+    exit 1
+fi
+
+echo "[$(date)] Nginx is running"
+
+# 启动 FastAPI
+echo "[$(date)] Starting FastAPI on 127.0.0.1:8000..."
+exec uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
+EOF
+
+RUN chmod +x /app/scripts/start.sh
+
+# 启动应用
+CMD ["/app/scripts/start.sh"]

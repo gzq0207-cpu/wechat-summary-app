@@ -98,4 +98,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:80/ || exit 1
 
 # 启动脚本
-CMD ["/app/scripts/start.sh"]
+CMD ["/bin/sh", "-c", "nginx -g 'daemon off;' & sleep 1 && exec uvicorn app.main:app --host 127.0.0.1 --port 8000"]

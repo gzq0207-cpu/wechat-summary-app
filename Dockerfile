@@ -72,21 +72,27 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # 创建启动脚本
 RUN mkdir -p /app/scripts && cat > /app/scripts/start.sh << 'EOF'
 #!/bin/bash
-# 启动 Nginx（提供前端）
+set -e
+
+echo "Starting Nginx..."
 nginx -g "daemon off;" &
 NGINX_PID=$!
 
-# 启动 FastAPI 后端
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+echo "Waiting for Nginx to start..."
+sleep 2
+
+echo "Starting FastAPI backend..."
+# FastAPI 只监听本地 8000，由 Nginx 代理
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 EOF
 RUN chmod +x /app/scripts/start.sh
 
-# 暴露端口
-EXPOSE 80 8000
+# 仅暴露 80 端口（Nginx 处理所有流量）
+EXPOSE 80
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/api/v1/status')" || exit 1
+    CMD curl -f http://localhost:80/ || exit 1
 
 # 启动脚本
 CMD ["/app/scripts/start.sh"]

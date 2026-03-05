@@ -125,7 +125,7 @@ if nginx_proc.poll() is not None:
 print(f"[OK] Nginx running (PID: {nginx_proc.pid})")
 
 # Step 3: Start FastAPI in foreground
-print("[3/3] Starting FastAPI on 127.0.0.1:8000...")
+print("[3/3] Starting FastAPI on 0.0.0.0:8000...")
 print("="*50 + "\n")
 
 # Use os.execvp to replace this process with FastAPI
@@ -133,7 +133,7 @@ print("="*50 + "\n")
 os.execvp("uvicorn", [
     "uvicorn",
     "app.main:app",
-    "--host", "127.0.0.1",
+    "--host", "0.0.0.0",
     "--port", "8000",
     "--log-level", "info"
 ])

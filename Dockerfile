@@ -78,54 +78,6 @@ COPY backend/.env.example .env
 # 复制 Nginx 配置
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# 创建 entrypoint 脚本 - 使用 sh 执行，支持后台进程
-RUN cat > /entrypoint.sh << 'SEOF'
-#!/bin/sh
-
-echo "======================================"
-echo "WeChat Summary App - Starting"
-echo "======================================"
-echo "Time: $(date)"
-echo "======================================"
-
-# Step 1: Validate Nginx config
-echo "[STEP 1/3] Validating Nginx configuration..."
-if ! nginx -t 2>&1; then
-    echo "[ERROR] Nginx configuration test failed!"
-    exit 1
-fi
-
-# Step 2: Start Nginx in background  
-echo "[STEP 2/3] Starting Nginx on port 80..."
-nginx -g "daemon off;" > /var/log/nginx/startup.log 2>&1 &
-NGINX_PID=$!
-echo "Nginx PID: $NGINX_PID"
-
-# Give Nginx time to truly start
-sleep 2
-
-# Verify Nginx is running
-if ! ps -p $NGINX_PID > /dev/null 2>&1; then
-    echo "[ERROR] Nginx failed to start!"
-    echo "=== Nginx Error Log ==="
-    cat /var/log/nginx/error.log 2>&1 || echo "No error log found"
-    echo "=== Nginx Startup Log ==="
-    cat /var/log/nginx/startup.log 2>&1 || echo "No startup log found"
-    exit 1
-fi
-
-echo "[OK] Nginx is running successfully (PID: $NGINX_PID)"
-sleep 1
-
-# Step 3: Start FastAPI in foreground (this becomes PID 1)
-echo "[STEP 3/3] Starting FastAPI on 127.0.0.1:8000..."
-echo "======================================"
-
-exec uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
-SEOF
-
-RUN chmod +x /entrypoint.sh
-
 # Expose only port 80 (Nginx)
 EXPOSE 80
 
@@ -133,5 +85,27 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
     CMD curl -f http://127.0.0.1:80/api/v1/ >/dev/null 2>&1 || exit 1
 
-# Use entrypoint script via shell to enable shell features like &
-ENTRYPOINT ["/bin/sh", "-c", "exec /entrypoint.sh"]
+# 直接启动：Nginx + FastAPI
+# 1. 验证 Nginx 配置
+# 2. 启动 Nginx 在后台
+# 3. 启动 FastAPI 在前台（作为 PID 1）
+CMD ["/bin/sh", "-c", "\
+  echo '======================================'; \
+  echo 'WeChat Summary App - Starting'; \
+  echo '======================================'; \
+  echo '[1/3] Testing Nginx configuration...'; \
+  nginx -t || exit 1; \
+  echo '[2/3] Starting Nginx on port 80...'; \
+  nginx -g 'daemon off;' > /tmp/nginx.log 2>&1 & \
+  NGINX_PID=$!; \
+  sleep 2; \
+  if ! ps -p $NGINX_PID > /dev/null 2>&1; then \
+    echo '[ERROR] Nginx failed to start!'; \
+    cat /var/log/nginx/error.log 2>&1 || cat /tmp/nginx.log 2>&1; \
+    exit 1; \
+  fi; \
+  echo \"[OK] Nginx running (PID: $NGINX_PID)\"; \
+  echo '[3/3] Starting FastAPI on 127.0.0.1:8000...'; \
+  echo '======================================'; \
+  exec uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info \
+"]

@@ -78,42 +78,66 @@ COPY backend/.env.example .env
 # 复制 Nginx 配置
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# 创建启动脚本文件（简单可靠的方式）
-RUN mkdir -p /startup && cat > /startup/start.sh << 'EOF'
-#!/bin/sh
-set -e
+# 创建 Python 启动脚本（比 shell 更可靠）
+RUN cat > /startup.py << 'PYEOF'
+#!/usr/bin/env python3
+"""
+启动脚本：Nginx + FastAPI
+确保 Nginx 在前台模式下监听 80 端口，FastAPI 监听 127.0.0.1:8000
+"""
+import subprocess
+import sys
+import time
+import signal
+import os
 
-echo "======================================"
-echo "WeChat Summary App - Starting"
-echo "======================================"
+print("="*50)
+print("WeChat Summary App - Starting")
+print("="*50)
 
 # Step 1: Validate Nginx
-echo "[1/3] Testing Nginx configuration..."
-nginx -t
+print("\n[1/3] Testing Nginx configuration...")
+result = subprocess.run(["nginx", "-t"], capture_output=True, text=True)
+if result.returncode != 0:
+    print("[ERROR] Nginx configuration test failed!")
+    print(result.stderr)
+    sys.exit(1)
+print("[OK] Nginx configuration is valid")
 
-# Step 2: Start Nginx
-echo "[2/3] Starting Nginx on port 80..."
-nginx -g "daemon off;" > /tmp/nginx.log 2>&1 &
-NGINX_PID=$!
-sleep 2
+# Step 2: Start Nginx in background
+print("[2/3] Starting Nginx on port 80...")
+nginx_proc = subprocess.Popen(
+    ["nginx", "-g", "daemon off;"],
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE
+)
+time.sleep(2)
 
-# Verify Nginx
-if ! ps -p $NGINX_PID > /dev/null 2>&1; then
-    echo "[ERROR] Nginx failed to start!"
-    cat /var/log/nginx/error.log 2>&1 || cat /tmp/nginx.log 2>&1
-    exit 1
-fi
+if nginx_proc.poll() is not None:
+    stdout, stderr = nginx_proc.communicate()
+    print("[ERROR] Nginx failed to start!")
+    print("STDOUT:", stdout.decode())
+    print("STDERR:", stderr.decode())
+    sys.exit(1)
 
-echo "[OK] Nginx running (PID: $NGINX_PID)"
+print(f"[OK] Nginx running (PID: {nginx_proc.pid})")
 
-# Step 3: Start FastAPI
-echo "[3/3] Starting FastAPI on 127.0.0.1:8000..."
-echo "======================================"
+# Step 3: Start FastAPI in foreground
+print("[3/3] Starting FastAPI on 127.0.0.1:8000...")
+print("="*50 + "\n")
 
-exec uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
-EOF
+# Use os.execvp to replace this process with FastAPI
+# This ensures FastAPI becomes PID 1 and its signals are handled directly
+os.execvp("uvicorn", [
+    "uvicorn",
+    "app.main:app",
+    "--host", "127.0.0.1",
+    "--port", "8000",
+    "--log-level", "info"
+])
+PYEOF
 
-RUN chmod +x /startup/start.sh
+RUN chmod +x /startup.py
 
 # Expose only port 80 (Nginx)
 EXPOSE 80
@@ -122,5 +146,5 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
     CMD curl -f http://127.0.0.1:80/api/v1/ >/dev/null 2>&1 || exit 1
 
-# Run the startup script
-CMD ["/startup/start.sh"]
+# Run the Python startup script
+CMD ["python3", "/startup.py"]

@@ -78,38 +78,46 @@ COPY backend/.env.example .env
 # 复制 Nginx 配置
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# 创建 entrypoint 脚本 - 简化版本，确保可靠
+# 创建 entrypoint 脚本 - 使用 sh 执行，支持后台进程
 RUN cat > /entrypoint.sh << 'SEOF'
 #!/bin/sh
-# Fail on any error
-set -e
 
 echo "======================================"
 echo "WeChat Summary App - Starting"
 echo "======================================"
+echo "Time: $(date)"
+echo "======================================"
 
 # Step 1: Validate Nginx config
 echo "[STEP 1/3] Validating Nginx configuration..."
-nginx -t
-
-# Step 2: Start Nginx in background  
-echo "[STEP 2/3] Starting Nginx daemon..."
-nginx -g "daemon off;" &
-NGINX_PID=$!
-
-# Give Nginx time to start
-sleep 3
-
-# Verify Nginx started
-if ! ps -p $NGINX_PID > /dev/null 2>&1; then
-    echo "[ERROR] Nginx failed to start! Showing error log:"
-    cat /var/log/nginx/error.log
+if ! nginx -t 2>&1; then
+    echo "[ERROR] Nginx configuration test failed!"
     exit 1
 fi
 
-echo "[OK] Nginx running (PID: $NGINX_PID)"
+# Step 2: Start Nginx in background  
+echo "[STEP 2/3] Starting Nginx on port 80..."
+nginx -g "daemon off;" > /var/log/nginx/startup.log 2>&1 &
+NGINX_PID=$!
+echo "Nginx PID: $NGINX_PID"
 
-# Step 3: Start FastAPI server
+# Give Nginx time to truly start
+sleep 2
+
+# Verify Nginx is running
+if ! ps -p $NGINX_PID > /dev/null 2>&1; then
+    echo "[ERROR] Nginx failed to start!"
+    echo "=== Nginx Error Log ==="
+    cat /var/log/nginx/error.log 2>&1 || echo "No error log found"
+    echo "=== Nginx Startup Log ==="
+    cat /var/log/nginx/startup.log 2>&1 || echo "No startup log found"
+    exit 1
+fi
+
+echo "[OK] Nginx is running successfully (PID: $NGINX_PID)"
+sleep 1
+
+# Step 3: Start FastAPI in foreground (this becomes PID 1)
 echo "[STEP 3/3] Starting FastAPI on 127.0.0.1:8000..."
 echo "======================================"
 
@@ -122,8 +130,8 @@ RUN chmod +x /entrypoint.sh
 EXPOSE 80
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
     CMD curl -f http://127.0.0.1:80/api/v1/ >/dev/null 2>&1 || exit 1
 
-# Use entrypoint script
-ENTRYPOINT ["/entrypoint.sh"]
+# Use entrypoint script via shell to enable shell features like &
+ENTRYPOINT ["/bin/sh", "-c", "exec /entrypoint.sh"]

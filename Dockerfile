@@ -72,18 +72,21 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # 创建启动脚本
 RUN mkdir -p /app/scripts && cat > /app/scripts/start.sh << 'EOF'
 #!/bin/bash
-set -e
-
-echo "Starting Nginx..."
-nginx -g "daemon off;" &
+# Start Nginx in background
+echo "[INFO] Starting Nginx on port 80..."
+/usr/sbin/nginx -g "daemon off;" >/dev/null 2>&1 &
 NGINX_PID=$!
+sleep 1
 
-echo "Waiting for Nginx to start..."
-sleep 2
+if ps -p $NGINX_PID > /dev/null; then
+    echo "[INFO] Nginx started successfully (PID: $NGINX_PID)"
+else
+    echo "[WARN] Nginx may have failed to start, continuing anyway..."
+fi
 
-echo "Starting FastAPI backend..."
-# FastAPI 只监听本地 8000，由 Nginx 代理
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+# Start FastAPI on localhost:8000 (Nginx will proxy from port 80)
+echo "[INFO] Starting FastAPI on localhost:8000..."
+exec uvicorn app.main:app --host 127.0.0.1 --port 8000
 EOF
 RUN chmod +x /app/scripts/start.sh
 

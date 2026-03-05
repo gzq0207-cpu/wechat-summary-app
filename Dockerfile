@@ -14,6 +14,7 @@ RUN npm install
 # 复制前端源代码
 COPY frontend/src ./src
 COPY frontend/*.config.js ./
+COPY frontend/vite.config.ts ./
 COPY frontend/tsconfig*.json ./
 COPY frontend/index.html ./
 

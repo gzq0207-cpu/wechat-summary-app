@@ -78,6 +78,43 @@ COPY backend/.env.example .env
 # 复制 Nginx 配置
 COPY nginx.conf /etc/nginx/nginx.conf
 
+# 创建启动脚本文件（简单可靠的方式）
+RUN mkdir -p /startup && cat > /startup/start.sh << 'EOF'
+#!/bin/sh
+set -e
+
+echo "======================================"
+echo "WeChat Summary App - Starting"
+echo "======================================"
+
+# Step 1: Validate Nginx
+echo "[1/3] Testing Nginx configuration..."
+nginx -t
+
+# Step 2: Start Nginx
+echo "[2/3] Starting Nginx on port 80..."
+nginx -g "daemon off;" > /tmp/nginx.log 2>&1 &
+NGINX_PID=$!
+sleep 2
+
+# Verify Nginx
+if ! ps -p $NGINX_PID > /dev/null 2>&1; then
+    echo "[ERROR] Nginx failed to start!"
+    cat /var/log/nginx/error.log 2>&1 || cat /tmp/nginx.log 2>&1
+    exit 1
+fi
+
+echo "[OK] Nginx running (PID: $NGINX_PID)"
+
+# Step 3: Start FastAPI
+echo "[3/3] Starting FastAPI on 127.0.0.1:8000..."
+echo "======================================"
+
+exec uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
+EOF
+
+RUN chmod +x /startup/start.sh
+
 # Expose only port 80 (Nginx)
 EXPOSE 80
 
@@ -85,27 +122,5 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
     CMD curl -f http://127.0.0.1:80/api/v1/ >/dev/null 2>&1 || exit 1
 
-# 直接启动：Nginx + FastAPI
-# 1. 验证 Nginx 配置
-# 2. 启动 Nginx 在后台
-# 3. 启动 FastAPI 在前台（作为 PID 1）
-CMD ["/bin/sh", "-c", "\
-  echo '======================================'; \
-  echo 'WeChat Summary App - Starting'; \
-  echo '======================================'; \
-  echo '[1/3] Testing Nginx configuration...'; \
-  nginx -t || exit 1; \
-  echo '[2/3] Starting Nginx on port 80...'; \
-  nginx -g 'daemon off;' > /tmp/nginx.log 2>&1 & \
-  NGINX_PID=$!; \
-  sleep 2; \
-  if ! ps -p $NGINX_PID > /dev/null 2>&1; then \
-    echo '[ERROR] Nginx failed to start!'; \
-    cat /var/log/nginx/error.log 2>&1 || cat /tmp/nginx.log 2>&1; \
-    exit 1; \
-  fi; \
-  echo \"[OK] Nginx running (PID: $NGINX_PID)\"; \
-  echo '[3/3] Starting FastAPI on 127.0.0.1:8000...'; \
-  echo '======================================'; \
-  exec uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info \
-"]
+# Run the startup script
+CMD ["/startup/start.sh"]

@@ -78,72 +78,52 @@ COPY backend/.env.example .env
 # 复制 Nginx 配置
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# 创建启动脚本
-RUN mkdir -p /app/scripts && cat > /app/scripts/start.sh << 'EOF'
-#!/bin/bash
-# Start Nginx in background
-echo "[INFO] Starting Nginx on port 80..."
-/usr/sbin/nginx -g "daemon off;" >/dev/null 2>&1 &
-NGINX_PID=$!
-sleep 1
+# 创建 entrypoint 脚本 - 简化版本，确保可靠
+RUN cat > /entrypoint.sh << 'SEOF'
+#!/bin/sh
+# Fail on any error
+set -e
 
-if ps -p $NGINX_PID > /dev/null; then
-    echo "[INFO] Nginx started successfully (PID: $NGINX_PID)"
-else
-    echo "[WARN] Nginx may have failed to start, continuing anyway..."
+echo "======================================"
+echo "WeChat Summary App - Starting"
+echo "======================================"
+
+# Step 1: Validate Nginx config
+echo "[STEP 1/3] Validating Nginx configuration..."
+nginx -t
+
+# Step 2: Start Nginx in background  
+echo "[STEP 2/3] Starting Nginx daemon..."
+nginx -g "daemon off;" &
+NGINX_PID=$!
+
+# Give Nginx time to start
+sleep 3
+
+# Verify Nginx started
+if ! ps -p $NGINX_PID > /dev/null 2>&1; then
+    echo "[ERROR] Nginx failed to start! Showing error log:"
+    cat /var/log/nginx/error.log
+    exit 1
 fi
 
-# Start FastAPI on localhost:8000 (Nginx will proxy from port 80)
-echo "[INFO] Starting FastAPI on localhost:8000..."
-exec uvicorn app.main:app --host 127.0.0.1 --port 8000
-EOF
-RUN chmod +x /app/scripts/start.sh
+echo "[OK] Nginx running (PID: $NGINX_PID)"
 
-# 仅暴露 80 端口（Nginx 处理所有流量）
+# Step 3: Start FastAPI server
+echo "[STEP 3/3] Starting FastAPI on 127.0.0.1:8000..."
+echo "======================================"
+
+exec uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
+SEOF
+
+RUN chmod +x /entrypoint.sh
+
+# Expose only port 80 (Nginx)
 EXPOSE 80
 
-# 健康检查 - 检查 Nginx 是否在 80 端口响应
+# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://127.0.0.1:80/api/v1/ >/dev/null 2>&1 || exit 1
 
-# 创建启动脚本
-RUN mkdir -p /app/scripts && cat > /app/scripts/start.sh << 'EOF'
-#!/bin/bash
-set -e
-
-echo "[$(date)] Starting services..."
-
-# 测试 Nginx 配置
-echo "[$(date)] Testing Nginx configuration..."
-if ! nginx -t 2>&1; then
-    echo "[ERROR] Nginx configuration test failed. Exiting."
-    exit 1
-fi
-
-# 启动 Nginx
-echo "[$(date)] Starting Nginx on port 80..."
-/usr/sbin/nginx -g "daemon off;" &
-NGINX_PID=$!
-echo "[$(date)] Nginx started (PID: $NGINX_PID)"
-
-# 等待 Nginx 启动
-sleep 2
-
-# 检查 Nginx 是否在运行
-if ! ps -p $NGINX_PID > /dev/null 2>&1; then
-    echo "[ERROR] Nginx process died. Checking logs..."
-    cat /var/log/nginx/error.log || true
-    exit 1
-fi
-
-echo "[$(date)] Nginx is running"
-
-# 启动 FastAPI
-echo "[$(date)] Starting FastAPI on 127.0.0.1:8000..."
-exec uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level info
-EOF
-
-RUN chmod +x /app/scripts/start.sh
-
-# 启动应用
-CMD ["/app/scripts/start.sh"]
+# Use entrypoint script
+ENTRYPOINT ["/entrypoint.sh"]
